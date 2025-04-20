@@ -11,12 +11,14 @@ def init_db():
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS functions
                  (id INTEGER PRIMARY KEY, name TEXT, route TEXT, language TEXT, timeout INTEGER, code TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS metrics
+                 (id INTEGER PRIMARY KEY, func_id INTEGER, execution_time REAL, success BOOLEAN, cpu_usage INTEGER, memory_usage INTEGER, timestamp TEXT)''')
     conn.commit()
     conn.close()
 
 init_db()
 
-# Pydantic model
+# Pydantic models
 class Function(BaseModel):
     name: str
     route: str
@@ -24,9 +26,17 @@ class Function(BaseModel):
     timeout: int
     code: Optional[str] = None
 
-# CRUD Endpoints
+class Metric(BaseModel):
+    func_id: int
+    execution_time: float
+    success: bool
+    cpu_usage: int
+    memory_usage: int
+    timestamp: str
+
+# CRUD Endpoints for Functions
 @app.post('/functions/')
-async def create_function(func: Function):
+def create_function(func: Function):
     conn = sqlite3.connect('functions.db')
     c = conn.cursor()
     c.execute('INSERT INTO functions (name, route, language, timeout, code) VALUES (?, ?, ?, ?, ?)',
@@ -36,7 +46,7 @@ async def create_function(func: Function):
     return {'message': 'Function created', 'function': func}
 
 @app.get('/functions/{func_id}')
-async def get_function(func_id: int):
+def get_function(func_id: int):
     conn = sqlite3.connect('functions.db')
     c = conn.cursor()
     c.execute('SELECT * FROM functions WHERE id = ?', (func_id,))
@@ -47,7 +57,7 @@ async def get_function(func_id: int):
     raise HTTPException(status_code=404, detail='Function not found')
 
 @app.put('/functions/{func_id}')
-async def update_function(func_id: int, func: Function):
+def update_function(func_id: int, func: Function):
     conn = sqlite3.connect('functions.db')
     c = conn.cursor()
     c.execute('UPDATE functions SET name = ?, route = ?, language = ?, timeout = ?, code = ? WHERE id = ?',
@@ -57,13 +67,24 @@ async def update_function(func_id: int, func: Function):
     return {'message': 'Function updated'}
 
 @app.delete('/functions/{func_id}')
-async def delete_function(func_id: int):
+def delete_function(func_id: int):
     conn = sqlite3.connect('functions.db')
     c = conn.cursor()
     c.execute('DELETE FROM functions WHERE id = ?', (func_id,))
     conn.commit()
     conn.close()
     return {'message': 'Function deleted'}
+
+# Metrics Endpoint
+@app.post('/metrics/')
+def log_metric(metric: Metric):
+    conn = sqlite3.connect('functions.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO metrics (func_id, execution_time, success, cpu_usage, memory_usage, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+              (metric.func_id, metric.execution_time, metric.success, metric.cpu_usage, metric.memory_usage, metric.timestamp))
+    conn.commit()
+    conn.close()
+    return {'message': 'Metric logged'}
 
 if __name__ == '__main__':
     import uvicorn
